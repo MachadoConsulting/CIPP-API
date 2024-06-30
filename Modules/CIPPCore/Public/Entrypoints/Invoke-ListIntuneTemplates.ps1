@@ -3,7 +3,9 @@ using namespace System.Net
 Function Invoke-ListIntuneTemplates {
     <#
     .FUNCTIONALITY
-    Entrypoint
+        Entrypoint
+    .ROLE
+        Endpoint.MEM.Read
     #>
     [CmdletBinding()]
     param($Request, $TriggerMetadata)
@@ -32,10 +34,10 @@ Function Invoke-ListIntuneTemplates {
             $data = $_.RAWJson | ConvertFrom-Json
             $data | Add-Member -NotePropertyName 'displayName' -NotePropertyValue $_.Displayname -Force
             $data | Add-Member -NotePropertyName 'description' -NotePropertyValue $_.Description -Force
-            $data | Add-Member -NotePropertyName 'Type' -NotePropertyValue $_.Type
-            $data | Add-Member -NotePropertyName 'GUID' -NotePropertyValue $_.GUID
+            $data | Add-Member -NotePropertyName 'Type' -NotePropertyValue $_.Type -Force
+            $data | Add-Member -NotePropertyName 'GUID' -NotePropertyValue $_.GUID -Force
             $data
-        }
+        } | Sort-Object -Property displayName
     }
 
     if ($Request.query.ID) { $Templates = $Templates | Where-Object -Property guid -EQ $Request.query.id }
