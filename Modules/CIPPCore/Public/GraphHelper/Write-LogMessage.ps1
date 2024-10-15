@@ -1,16 +1,30 @@
-function Write-LogMessage ($message, $tenant = 'None', $API = 'None', $tenantId = $null, $user, $sev) {
+function Write-LogMessage {
+    <#
+    .FUNCTIONALITY
+    Internal
+    #>
+    Param(
+        $message,
+        $tenant = 'None',
+        $API = 'None',
+        $tenantId = $null,
+        $user,
+        $sev,
+        $LogData = ''
+    )
     try {
         $username = ([System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($user)) | ConvertFrom-Json).userDetails
     } catch {
         $username = $user
     }
 
+    if ($LogData) { $LogData = ConvertTo-Json -InputObject $LogData -Depth 10 -Compress }
+
     $Table = Get-CIPPTable -tablename CippLogs
 
     if (!$tenant) { $tenant = 'None' }
     if (!$username) { $username = 'CIPP' }
-    if ($sev -eq 'Debug' -and $env:DebugMode -ne 'true') {
-        Write-Information 'Not writing to log file - Debug mode is not enabled.'
+    if ($sev -eq 'Debug' -and $env:DebugMode -ne $true) {
         return
     }
     $PartitionKey = (Get-Date -UFormat '%Y%m%d').ToString()
@@ -21,15 +35,17 @@ function Write-LogMessage ($message, $tenant = 'None', $API = 'None', $tenantId 
         'Username'     = [string]$username
         'Severity'     = [string]$sev
         'SentAsAlert'  = $false
-        'PartitionKey' = $PartitionKey
-        'RowKey'       = ([guid]::NewGuid()).ToString()
+        'PartitionKey' = [string]$PartitionKey
+        'RowKey'       = [string]([guid]::NewGuid()).ToString()
+        'FunctionNode' = [string]$env:WEBSITE_SITE_NAME
+        'LogData'      = [string]$LogData
     }
 
 
     if ($tenantId) {
         $TableRow.Add('TenantID', [string]$tenantId)
     }
-    
+
     $Table.Entity = $TableRow
     Add-CIPPAzDataTableEntity @Table | Out-Null
 }
