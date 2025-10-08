@@ -1,5 +1,3 @@
-using namespace System.Net
-
 Function Invoke-ExecExtensionSync {
     <#
     .FUNCTIONALITY
@@ -9,10 +7,6 @@ Function Invoke-ExecExtensionSync {
     #>
     [CmdletBinding()]
     param($Request, $TriggerMetadata)
-
-    $APIName = $TriggerMetadata.FunctionName
-    Write-LogMessage -user $request.headers.'x-ms-client-principal' -API $APINAME -message 'Accessed this API' -Sev 'Debug'
-
     switch ($Request.Query.Extension) {
         'Gradient' {
             try {
@@ -99,7 +93,7 @@ Function Invoke-ExecExtensionSync {
     }
 
 
-    Push-OutputBinding -Name Response -Value ([HttpResponseContext]@{
+    return ([HttpResponseContext]@{
             StatusCode = [HttpStatusCode]::OK
             Body       = $Results
         })
