@@ -9,7 +9,7 @@ function Set-CIPPDefaultAPDeploymentProfile {
         $CollectHash,
         $UserType,
         $DeploymentMode,
-        $HideChangeAccount,
+        $HideChangeAccount = $true,
         $AssignTo,
         $HidePrivacy,
         $HideTerms,
@@ -23,26 +23,27 @@ function Set-CIPPDefaultAPDeploymentProfile {
 
     try {
         $ObjBody = [pscustomobject]@{
-            '@odata.type'                            = '#microsoft.graph.azureADWindowsAutopilotDeploymentProfile'
-            'displayName'                            = "$($DisplayName)"
-            'description'                            = "$($Description)"
-            'deviceNameTemplate'                     = "$($DeviceNameTemplate)"
-            'language'                               = "$($Language)"
-            'enableWhiteGlove'                       = $([bool]($AllowWhiteGlove))
-            'deviceType'                             = 'windowsPc'
-            'extractHardwareHash'                    = $([bool]($CollectHash))
-            'roleScopeTagIds'                        = @()
-            'hybridAzureADJoinSkipConnectivityCheck' = $false
-            'outOfBoxExperienceSetting'              = @{
+            '@odata.type'                   = '#microsoft.graph.azureADWindowsAutopilotDeploymentProfile'
+            'displayName'                   = "$($DisplayName)"
+            'description'                   = "$($Description)"
+            'deviceNameTemplate'            = "$($DeviceNameTemplate)"
+            'locale'                        = "$($Language ?? 'os-default')"
+            'preprovisioningAllowed'        = $([bool]($AllowWhiteGlove))
+            'deviceType'                    = 'windowsPc'
+            'hardwareHashExtractionEnabled' = $([bool]($CollectHash))
+            'roleScopeTagIds'               = @()
+            'outOfBoxExperienceSetting'     = @{
                 'deviceUsageType'              = "$DeploymentMode"
-                'escapeLinkHidden'             = $([bool]($HideChangeAccount))
+                'escapeLinkHidden'             = $([bool]($true))
                 'privacySettingsHidden'        = $([bool]($HidePrivacy))
                 'eulaHidden'                   = $([bool]($HideTerms))
                 'userType'                     = "$UserType"
                 'keyboardSelectionPageSkipped' = $([bool]($AutoKeyboard))
             }
         }
-        $Body = ConvertTo-Json -InputObject $ObjBody
+        $Body = ConvertTo-Json -InputObject $ObjBody -Depth 10
+
+        Write-Information $Body
 
         $Profiles = New-GraphGETRequest -uri 'https://graph.microsoft.com/beta/deviceManagement/windowsAutopilotDeploymentProfiles' -tenantid $TenantFilter | Where-Object -Property displayName -EQ $DisplayName
         if ($Profiles.count -gt 1) {
@@ -69,17 +70,22 @@ function Set-CIPPDefaultAPDeploymentProfile {
         }
 
         if ($AssignTo -eq $true) {
-            $AssignBody = '{"target":{"@odata.type":"#microsoft.graph.allDevicesAssignmentTarget"}}'
-            if ($PSCmdlet.ShouldProcess($AssignTo, "Assign Autopilot profile $DisplayName")) {
-                #Get assignments
-                $Assignments = New-GraphGETRequest -uri "https://graph.microsoft.com/beta/deviceManagement/windowsAutopilotDeploymentProfiles/$($GraphRequest.id)/assignments" -tenantid $TenantFilter
-                if (!$Assignments) {
-                    $null = New-GraphPOSTRequest -uri "https://graph.microsoft.com/beta/deviceManagement/windowsAutopilotDeploymentProfiles/$($GraphRequest.id)/assignments" -tenantid $TenantFilter -type POST -body $AssignBody
+            try {
+                $AssignBody = '{"target":{"@odata.type":"#microsoft.graph.allDevicesAssignmentTarget"}}'
+                if ($PSCmdlet.ShouldProcess($AssignTo, "Assign Autopilot profile $DisplayName")) {
+                    #Get assignments
+                    $Assignments = New-GraphGETRequest -uri "https://graph.microsoft.com/beta/deviceManagement/windowsAutopilotDeploymentProfiles/$($GraphRequest.id)/assignments" -tenantid $TenantFilter
+                    if (!$Assignments) {
+                        $null = New-GraphPOSTRequest -uri "https://graph.microsoft.com/beta/deviceManagement/windowsAutopilotDeploymentProfiles/$($GraphRequest.id)/assignments" -tenantid $TenantFilter -type POST -body $AssignBody
+                    }
+                    Write-LogMessage -Headers $User -API $APIName -tenant $TenantFilter -message "Assigned autopilot profile $($DisplayName) to $($AssignTo)" -Sev 'Info'
                 }
-                Write-LogMessage -Headers $User -API $APIName -tenant $TenantFilter -message "Assigned autopilot profile $($DisplayName) to $AssignTo" -Sev 'Info'
+            } catch {
+                $ErrorMessage = Get-CippException -Exception $_
+                Write-LogMessage -Headers $User -API $APIName -tenant $TenantFilter -message "Failed to assign Autopilot profile $($DisplayName) to $($AssignTo): $($ErrorMessage.NormalizedError)" -Sev 'Error' -LogData $ErrorMessage
             }
         }
-        "Successfully $($Type)ed profile for $TenantFilter"
+        "Successfully $($Type)ed profile for $($TenantFilter)"
     } catch {
         $ErrorMessage = Get-CippException -Exception $_
         $Result = "Failed $($Type)ing Autopilot Profile $($DisplayName). Error: $($ErrorMessage.NormalizedError)"
