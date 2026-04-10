@@ -97,6 +97,19 @@ function Get-GraphRequestList {
     }
 
     $GraphQuery = [System.UriBuilder]('https://graph.microsoft.com/{0}/{1}' -f $Version, $Endpoint)
+
+    # Resolve variable placeholders in Parameters before building the query string.
+    # Supported: {DaysAgo:N} → ISO 8601 date N days in the past (UTC)
+    $Keys = @($Parameters.Keys)
+    foreach ($Key in $Keys) {
+        if ($Parameters[$Key] -is [string]) {
+            $Parameters[$Key] = [regex]::Replace($Parameters[$Key], '\{DaysAgo:(\d+)\}', {
+                param($m)
+                (Get-Date).ToUniversalTime().AddDays(-[int]$m.Groups[1].Value).ToString('yyyy-MM-dd')
+            })
+        }
+    }
+
     $ParamCollection = [System.Web.HttpUtility]::ParseQueryString([String]::Empty)
     foreach ($Item in ($Parameters.GetEnumerator() | Sort-Object -CaseSensitive -Property Key)) {
         if ($Item.Value -is [System.Boolean]) {
@@ -192,7 +205,8 @@ function Get-GraphRequestList {
                 } else {
                     $Filter = "PartitionKey eq '{0}' and (RowKey eq '{1}' or OriginalEntityId eq '{1}') and Timestamp ge datetime'{2}'" -f $PartitionKey, $TenantFilter, $Timestamp
                 }
-                $Rows = Get-CIPPAzDataTableEntity @Table -Filter $Filter
+                $Tenants = Get-Tenants -IncludeErrors
+                $Rows = Get-CIPPAzDataTableEntity @Table -Filter $Filter | Where-Object { $_.OriginalEntityId -in $Tenants.defaultDomainName -or $_.RowKey -in $Tenants.defaultDomainName }
                 $Type = 'Cache'
                 Write-Information "Table: $TableName | PK: $PartitionKey | Cached: $(($Rows | Measure-Object).Count) rows (Type: $($Type))"
                 $QueueReference = '{0}-{1}' -f $TenantFilter, $PartitionKey
@@ -278,7 +292,7 @@ function Get-GraphRequestList {
                                 Batch            = @($Batch)
                             }
                             #Write-Information  ($InputObject | ConvertTo-Json -Depth 5)
-                            $InstanceId = Start-NewOrchestration -FunctionName 'CIPPOrchestrator' -InputObject ($InputObject | ConvertTo-Json -Depth 5 -Compress)
+                            $InstanceId = Start-CIPPOrchestrator -InputObject $InputObject
                         } catch {
                             Write-Information "QUEUE ERROR: $($_.Exception.Message)"
                         }
@@ -320,7 +334,7 @@ function Get-GraphRequestList {
                                     OrchestratorName = 'GraphRequestOrchestrator'
                                     Batch            = @($QueueTenant)
                                 }
-                                $InstanceId = Start-NewOrchestration -FunctionName 'CIPPOrchestrator' -InputObject ($InputObject | ConvertTo-Json -Depth 5 -Compress)
+                                $InstanceId = Start-CIPPOrchestrator -InputObject $InputObject
 
                                 [PSCustomObject]@{
                                     QueueMessage = ('Loading {0} rows for {1}. Please check back after the job completes' -f $Count, $TenantFilter)

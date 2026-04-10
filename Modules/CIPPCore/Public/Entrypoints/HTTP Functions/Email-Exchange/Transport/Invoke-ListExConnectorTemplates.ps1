@@ -14,13 +14,13 @@ function Invoke-ListExConnectorTemplates {
     $Filter = "PartitionKey eq 'ExConnectorTemplate'"
 
     if ($Request.Query.ID) {
-        $Filter += " and RowKey eq '$($Request.Query.ID)'"
+        $Filter += " and RowKey eq '$(ConvertTo-CIPPODataFilterValue -Value $Request.Query.ID -Type Guid)'"
     }
 
-    $Templates = (Get-CIPPAzDataTableEntity @Table -Filter $Filter)
+    $TemplateRows = (Get-CIPPAzDataTableEntity @Table -Filter $Filter)
 
-    if ($Templates) {
-        $Templates | ForEach-Object {
+    if ($TemplateRows) {
+        $Templates = $TemplateRows | ForEach-Object {
             $GUID = $_.RowKey
             $Direction = $_.direction
             $data = $_.JSON | ConvertFrom-Json
@@ -28,6 +28,8 @@ function Invoke-ListExConnectorTemplates {
             $data | Add-Member -NotePropertyName 'cippconnectortype' -NotePropertyValue $Direction -Force
             $data
         } | Sort-Object -Property displayName
+    } else {
+        $Templates = @()
     }
     if ($Request.query.ID) { $Templates = $Templates | Where-Object -Property RowKey -EQ $Request.query.id }
 

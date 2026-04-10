@@ -41,8 +41,26 @@ function New-CIPPGroup {
     )
 
     try {
+        $GroupCacheTable = Get-CIPPTable -tablename 'CacheGroupCreation'
+        $SafeDisplayName = $GroupObject.displayName -replace '[^a-zA-Z0-9-]', '_'
+        $CacheRowKey = '{0}_{1}' -f $TenantFilter, $SafeDisplayName
+        $TenMinutesAgo = (Get-Date).AddMinutes(-10).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+        $CachedGroup = Get-CIPPAzDataTableEntity @GroupCacheTable -Filter "PartitionKey eq 'GroupCreation' and RowKey eq '$CacheRowKey' and Timestamp ge datetime'$TenMinutesAgo'"
+        if ($CachedGroup -and $CachedGroup.GroupId) {
+            Write-LogMessage -API $APIName -tenant $TenantFilter -message "Group '$($GroupObject.displayName)' was recently created (cached id: $($CachedGroup.GroupId)), skipping duplicate creation" -Sev Info
+            return [PSCustomObject]@{
+                Success      = $true
+                Message      = "Group $($GroupObject.displayName) already exists (from cache)"
+                GroupId      = $CachedGroup.GroupId
+                GroupType    = $CachedGroup.GroupType
+                Email        = $CachedGroup.Email
+                AlreadyExist = $true
+            }
+        }
+
         # Normalize group type for consistent handling (accept camelCase from templates)
         $NormalizedGroupType = switch -Wildcard ($GroupObject.groupType.ToLower()) {
+            'mail-enabled security' { 'Security'; break }
             '*dynamicdistribution*' { 'DynamicDistribution'; break }  # Check this first before *dynamic* and *distribution*
             '*dynamic*' { 'Dynamic'; break }
             '*generic*' { 'Generic'; break }
@@ -57,7 +75,7 @@ function New-CIPPGroup {
         }
 
         # Determine if this group type needs an email address
-        $GroupTypesNeedingEmail = @('M365', 'Distribution', 'DynamicDistribution')
+        $GroupTypesNeedingEmail = @('M365', 'Distribution', 'DynamicDistribution', 'Security')
         $NeedsEmail = $NormalizedGroupType -in $GroupTypesNeedingEmail
 
         # Determine email address only for group types that need it
@@ -76,16 +94,26 @@ function New-CIPPGroup {
             $null
         }
 
+        # Determine if we should generate a mailNickname with a GUID, or use the username field
+        if (-not $GroupObject.Username -or $NormalizedGroupType -in @('Generic', 'AzureRole')) {
+            $MailNickname = (New-Guid).guid.substring(0, 10)
+        } else {
+            $MailNickname = ($GroupObject.Username -split '@')[0] -replace '[^a-zA-Z0-9_-]', ''
+            if ([String]::IsNullOrEmpty($MailNickname)) {
+                $MailNickname = (New-Guid).guid
+            }
+        }
+
         Write-LogMessage -API $APIName -tenant $TenantFilter -message "Creating group $($GroupObject.displayName) of type $NormalizedGroupType$(if ($NeedsEmail) { " with email $Email" })" -Sev Info
 
         # Handle Graph API groups (Security, Generic, AzureRole, Dynamic, M365)
-        if ($NormalizedGroupType -in @('Generic', 'Security', 'AzureRole', 'Dynamic', 'M365')) {
+        if ($NormalizedGroupType -in @('Generic', 'AzureRole', 'Dynamic', 'M365')) {
             Write-Information "Creating group $($GroupObject.displayName) of type $NormalizedGroupType$(if ($NeedsEmail) { " with email $Email" })"
             $BodyParams = [PSCustomObject]@{
                 'displayName'        = $GroupObject.displayName
                 'description'        = $GroupObject.description
-                'mailNickname'       = $GroupObject.username
-                'mailEnabled'        = $false
+                'mailNickname'       = $MailNickname
+                'mailEnabled'        = ($NormalizedGroupType -eq 'M365')
                 'securityEnabled'    = $true
                 'isAssignableToRole' = ($NormalizedGroupType -eq 'AzureRole')
             }
@@ -150,7 +178,29 @@ function New-CIPPGroup {
                 GroupType = $NormalizedGroupType
                 Email     = if ($NeedsEmail) { $Email } else { $null }
             }
-
+            try {
+                $CacheEntity = @{
+                    PartitionKey = 'GroupCreation'
+                    RowKey       = $CacheRowKey
+                    GroupId      = [string]$GraphRequest.id
+                    DisplayName  = [string]$GroupObject.displayName
+                    GroupType    = [string]$NormalizedGroupType
+                    Email        = [string]$(if ($NeedsEmail) { $Email } else { '' })
+                    Tenant       = [string]$TenantFilter
+                }
+                Add-CIPPAzDataTableEntity @GroupCacheTable -Entity $CacheEntity -Force
+            } catch {
+                Write-Warning "Failed to write group creation cache for $($GroupObject.displayName): $($_.Exception.Message)"
+            }
+            if ($GroupObject.subscribeMembers) {
+                #Waiting for group to become available in Exo.
+                Start-Sleep -Seconds 10
+                $SubParams = @{
+                    Identity                  = $GraphRequest.id
+                    'autoSubscribeNewMembers' = $true
+                }
+                $null = New-ExoRequest -tenantid $TenantFilter -cmdlet 'Set-UnifiedGroup' -cmdParams $SubParams
+            }
         } else {
             # Handle Exchange Online groups (Distribution, DynamicDistribution)
 
@@ -178,11 +228,15 @@ function New-CIPPGroup {
 
                 $ExoParams = @{
                     Name                               = $GroupObject.displayName
-                    Alias                              = $GroupObject.username
+                    Alias                              = $MailNickname
                     Description                        = $GroupObject.description
                     PrimarySmtpAddress                 = $Email
                     Type                               = $GroupObject.groupType
                     RequireSenderAuthenticationEnabled = [bool]!$GroupObject.allowExternal
+                }
+
+                if ($NormalizedGroupType -eq 'Security') {
+                    $ExoParams.Type = 'Security'
                 }
 
                 # Add owners
@@ -216,6 +270,20 @@ function New-CIPPGroup {
                 GroupId   = $GraphRequest.Identity
                 GroupType = $NormalizedGroupType
                 Email     = $Email
+            }
+            try {
+                $CacheEntity = @{
+                    PartitionKey = 'GroupCreation'
+                    RowKey       = $CacheRowKey
+                    GroupId      = [string]$GraphRequest.Identity
+                    DisplayName  = [string]$GroupObject.displayName
+                    GroupType    = [string]$NormalizedGroupType
+                    Email        = [string]$Email
+                    Tenant       = [string]$TenantFilter
+                }
+                Add-CIPPAzDataTableEntity @GroupCacheTable -Entity $CacheEntity -Force
+            } catch {
+                Write-Warning "Failed to write group creation cache for $($GroupObject.displayName): $($_.Exception.Message)"
             }
         }
 

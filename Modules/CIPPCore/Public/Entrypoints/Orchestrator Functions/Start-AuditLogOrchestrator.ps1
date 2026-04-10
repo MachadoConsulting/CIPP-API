@@ -2,6 +2,9 @@ function Start-AuditLogOrchestrator {
     <#
     .SYNOPSIS
     Start the Audit Log Polling Orchestrator
+
+    .FUNCTIONALITY
+    Entrypoint
     #>
     [CmdletBinding(SupportsShouldProcess = $true)]
     param()
@@ -28,7 +31,7 @@ function Start-AuditLogOrchestrator {
                     Batch            = @($Batch)
                     SkipLog          = $true
                 }
-                Start-NewOrchestration -FunctionName 'CIPPOrchestrator' -InputObject ($InputObject | ConvertTo-Json -Depth 5 -Compress)
+                Start-CIPPOrchestrator -InputObject $InputObject
             }
         }
     } catch {

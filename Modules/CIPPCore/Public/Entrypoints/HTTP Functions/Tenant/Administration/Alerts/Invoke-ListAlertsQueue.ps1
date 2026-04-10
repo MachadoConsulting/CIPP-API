@@ -32,6 +32,7 @@ function Invoke-ListAlertsQueue {
             RowKey          = $Task.RowKey
             PartitionKey    = $Task.PartitionKey
             RepeatsEvery    = 'When received'
+            AlertComment    = $Task.AlertComment
             RawAlert        = @{
                 Conditions   = @($Conditions)
                 Actions      = @($($Task.Actions | ConvertFrom-Json -Depth 10 -ErrorAction SilentlyContinue))
@@ -39,7 +40,7 @@ function Invoke-ListAlertsQueue {
                 type         = $Task.type
                 RowKey       = $Task.RowKey
                 PartitionKey = $Task.PartitionKey
-
+                AlertComment = $Task.AlertComment
             }
         }
 
@@ -91,6 +92,9 @@ function Invoke-ListAlertsQueue {
             $TenantsForDisplay = @($TenantForDisplay)
         }
 
+        $TaskParameters = $Task.Parameters | ConvertFrom-Json -Depth 10 -ErrorAction SilentlyContinue
+        $ScriptName = $TaskParameters.InputValue.ScriptGuid.label ?? $null
+
         $TaskEntry = [PSCustomObject]@{
             RowKey          = $Task.RowKey
             PartitionKey    = $Task.PartitionKey
@@ -101,7 +105,9 @@ function Invoke-ListAlertsQueue {
             LogType         = 'Scripted'
             EventType       = 'Scheduled Task'
             RepeatsEvery    = $Task.Recurrence
+            AlertComment    = $Task.AlertComment
             RawAlert        = $Task
+            ScriptName      = $ScriptName
         }
 
         if ($AllowedTenants -notcontains 'AllTenants') {
