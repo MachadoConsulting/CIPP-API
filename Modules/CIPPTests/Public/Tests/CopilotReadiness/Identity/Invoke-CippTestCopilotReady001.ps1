@@ -10,7 +10,7 @@ function Invoke-CippTestCopilotReady001 {
     # include Teams (TEAMS1 or MCOSTANDARD). Using service plans avoids dependency on SKU part number
     # values — CIPP's LicenseOverview caches friendly display names, not raw API SKU codes.
     # https://learn.microsoft.com/en-us/copilot/microsoft-365/microsoft-365-copilot-licensing
-    $PrerequisiteServicePlans = @('TEAMS1', 'MCOSTANDARD')
+    $PrerequisiteServicePlans = @('TEAMS1', 'MCOSTANDARD', 'TEAMS_GOV', 'MCOSTANDARD_GOV')
 
     try {
         $LicenseData = Get-CIPPTestData -TenantFilter $Tenant -Type 'LicenseOverview'

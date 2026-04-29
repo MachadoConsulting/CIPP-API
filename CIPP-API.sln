@@ -1,0 +1,29 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.5.2.0
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Shared", "Shared", "{4F52FD11-658E-A102-6CD3-7D7C16FFA15B}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CIPPSharp", "Shared\CIPPSharp\CIPPSharp.csproj", "{EB4EF368-449F-F48C-D94E-AF5DADF5EADD}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{EB4EF368-449F-F48C-D94E-AF5DADF5EADD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EB4EF368-449F-F48C-D94E-AF5DADF5EADD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EB4EF368-449F-F48C-D94E-AF5DADF5EADD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EB4EF368-449F-F48C-D94E-AF5DADF5EADD}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{EB4EF368-449F-F48C-D94E-AF5DADF5EADD} = {4F52FD11-658E-A102-6CD3-7D7C16FFA15B}
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {F1FE034A-FDDE-431B-B012-70187273B027}
+	EndGlobalSection
+EndGlobal
