@@ -50,7 +50,9 @@ function Invoke-CippTestCopilotReady003 {
         $DesktopCount = 0
         foreach ($User in $LicensedUsers) {
             $Activation = $ActivationLookup[$User.userPrincipalName.ToLower()]
-            if ($Activation -and (([int]($Activation.windows ?? 0) + [int]($Activation.mac ?? 0)) -gt 0)) {
+            $Entry = ($Activation.userActivationCounts | ? {$_.productType -match "365 APPS"})
+            
+            if ($Entry -and (([int]($Entry.windows ?? 0) + [int]($Entry.mac ?? 0)) -gt 0)) {
                 $DesktopCount++
             } else {
                 $NoDesktopUsers.Add([pscustomobject]@{
@@ -93,7 +95,7 @@ function Invoke-CippTestCopilotReady003 {
                 $NeverActivated = @($NoDesktopUsers | Where-Object { $_.neverActivated }).Count
                 $Result += "**$($NoDesktopUsers.Count) users** have no desktop M365 Apps activation"
                 if ($NeverActivated -gt 0) { $Result += " ($NeverActivated have never activated on any platform)" }
-                $Result += '.`n'
+                $Result += ".`n"
             }
         }
 
