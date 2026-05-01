@@ -18,7 +18,7 @@ function Invoke-CippTestCopilotReady017 {
             return
         }
 
-        $TrendPoints = @($TrendData | Where-Object { $_.reportDate } | Sort-Object reportDate)
+        $TrendPoints = @($TrendData.adoptionByDate | Where-Object { $_.reportDate } | Sort-Object reportDate)
 
         if ($TrendPoints.Count -eq 0) {
             $Result = "No Microsoft 365 Copilot usage trend data was found for the past 7 days.`n`n"

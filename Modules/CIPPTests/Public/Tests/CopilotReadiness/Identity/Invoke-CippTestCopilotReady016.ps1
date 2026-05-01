@@ -17,22 +17,29 @@ function Invoke-CippTestCopilotReady016 {
             return
         }
 
-        $Summary = if ($SummaryData -is [array]) { $SummaryData | Select-Object -First 1 } else { $SummaryData }
-
-        # Get numeric app columns — exclude metadata fields
-        $MetaFields = @('reportRefreshDate', 'reportPeriod', 'reportDate', 'id')
-        $AppCounts = $Summary.PSObject.Properties | Where-Object {
-            $_.Name -notin $MetaFields -and
-            $null -ne $_.Value -and
-            $_.Value -is [ValueType] -and
-            $_.Value -isnot [bool]
+        $Summary = if ($SummaryData.adoptionByProduct) {
+            $SummaryData.adoptionByProduct | Select-Object -First 1
+        } elseif ($SummaryData -is [array]) {
+            $SummaryData[0]
+        } else {
+            $SummaryData
         }
 
-        $TotalAppCount = ($AppCounts | Measure-Object -Property Value -Sum).Sum ?? 0
-        if (-not $AppCounts -or $TotalAppCount -eq 0) {
+        $MetaFields = @('reportRefreshDate', 'reportPeriod', 'reportDate', 'id')
+
+        $AppProperties = $Summary.PSObject.Properties.Name |
+            Where-Object { $_ -notin $MetaFields -and $_ -match '(EnabledUsers|ActiveUsers)$' }
+
+        $AppNames = $AppProperties |
+            ForEach-Object { $_ -replace '(EnabledUsers|ActiveUsers)$', '' } |
+            Select-Object -Unique
+
+        $TotalAppCount = @($AppNames).Count
+
+        if (-not $AppNames -or $TotalAppCount -eq 0) {
             $Result = "No Microsoft 365 Copilot usage was detected in the past 30 days.`n`n"
             $Result += 'This tenant either has no Copilot licenses assigned or users have not yet started using Copilot features.'
-            Add-CippTestResult -TenantFilter $Tenant -TestId 'CopilotReady016' -TestType 'Identity' -Status 'Informational' -ResultMarkdown $Result -Risk 'Informational' -Name 'Copilot active user count by app' -UserImpact 'Low' -ImplementationEffort 'Low' -Category 'Copilot Readiness'
+            # Add-CippTestResult -TenantFilter $Tenant -TestId 'CopilotReady016' -TestType 'Identity' -Status 'Informational' -ResultMarkdown $Result -Risk 'Informational' -Name 'Copilot active user count by app' -UserImpact 'Low' -ImplementationEffort 'Low' -Category 'Copilot Readiness'
             return
         }
 
@@ -40,15 +47,33 @@ function Invoke-CippTestCopilotReady016 {
         $Result += "| App | Active Users |`n"
         $Result += "|-----|-------------|`n"
 
-        foreach ($App in ($AppCounts | Sort-Object Value -Descending)) {
-            # Format the property name to be more readable — insert space before each capital
-            # that follows a lowercase letter to avoid double-spacing sequences like 'AI' -> 'A I'
-            $AppName = $App.Name -replace '([a-z])([A-Z])', '$1 $2' -replace 'Active Users', ''
-            $Result += "| $($AppName.Trim()) | $($App.Value) |`n"
+        # Friendly display names for known apps
+        $FriendlyNames = @{
+            'microsoftTeams' = 'Microsoft Teams'
+            'word'           = 'Word'
+            'powerPoint'     = 'PowerPoint'
+            'outlook'        = 'Outlook'
+            'excel'          = 'Excel'
+            'oneNote'        = 'OneNote'
+            'loop'           = 'Loop'
+            'anyApp'         = 'Any App'
+            'copilotChat'    = 'Copilot Chat'
         }
 
-        if ($Summary.reportRefreshDate) {
-            $Result += "`n*Data as of $($Summary.reportRefreshDate).*"
+        foreach ($App in $AppNames) {
+            # Use the lookup if we have one, otherwise split camelCase as a fallback
+            if ($FriendlyNames.ContainsKey($App)) {
+                $AppName = $FriendlyNames[$App]
+            } else {
+                $AppName = (($App -creplace '([a-z])([A-Z])', '$1 $2') -replace '^.', { $_.Value.ToUpper() })
+            }
+
+            $ActiveUsers = $Summary."$($App)ActiveUsers"
+            $Result += "| $AppName | $ActiveUsers |`n"
+        }
+
+        if ($SummaryData.reportRefreshDate) {
+            $Result += "`n*Data as of $($SummaryData.reportRefreshDate).*"
         }
 
         Add-CippTestResult -TenantFilter $Tenant -TestId 'CopilotReady016' -TestType 'Identity' -Status 'Informational' -ResultMarkdown $Result -Risk 'Informational' -Name 'Copilot active user count by app' -UserImpact 'Low' -ImplementationEffort 'Low' -Category 'Copilot Readiness'
