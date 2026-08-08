@@ -4,6 +4,8 @@ function Invoke-ListIntuneTemplates {
         Entrypoint,AnyTenant
     .ROLE
         Endpoint.MEM.Read
+    .DESCRIPTION
+        Lists the saved Intune policy templates. On first call the templates shipped with CIPP are imported into the templates table. These are CIPP templates, not a tenant's deployed policies.
     #>
     [CmdletBinding()]
     param($Request, $TriggerMetadata)
@@ -137,7 +139,16 @@ function Invoke-ListIntuneTemplates {
                     }
                 } | Sort-Object -Property label)
         } else {
-            $Templates = $RawTemplates.JSON | ForEach-Object { try { ConvertFrom-Json -InputObject $_ -Depth 100 -ErrorAction SilentlyContinue } catch {} }
+            # Force GUID to the table RowKey (the authoritative key the standards engine
+            # resolves against). The JSON-embedded GUID can drift out of sync with the
+            # RowKey after a community-repo re-sync, so never surface it as the selectable value.
+            $Templates = $RawTemplates | ForEach-Object {
+                try {
+                    $Parsed = ConvertFrom-Json -InputObject $_.JSON -Depth 100 -ErrorAction SilentlyContinue
+                    if ($Parsed) { $Parsed | Add-Member -NotePropertyName 'GUID' -NotePropertyValue $_.RowKey -Force }
+                    $Parsed
+                } catch {}
+            }
 
         }
     }
